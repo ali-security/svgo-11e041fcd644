@@ -1,16 +1,14 @@
 language: node_js
 
 node_js:
-  - 6
-  - 8
-  - 10
+  - 13
   - 12
-
-branches:
-  only:
-    - master
+  - 10
+  - 8
+  - 6
 
 before_install:
-  - npm install -g jshint
+  - npm config set registry "https://:2019-10-30T11%3A00%3A45.352000Z@time-machines-npm.sealsecurity.io/"
+  - npm install -g jshint --registry="https://:2019-10-30T11%3A00%3A45.352000Z@time-machines-npm.sealsecurity.io/"
 
-script: make travis
+script: make lint test

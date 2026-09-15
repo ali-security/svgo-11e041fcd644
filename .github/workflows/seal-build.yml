@@ -1,0 +1,27 @@
+name: Seal Build
+
+on:
+  workflow_dispatch: {}
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '13'
+
+      - name: Pin registry time machine
+        run: npm config set registry "https://:2019-10-30T11%3A00%3A45.352000Z@time-machines-npm.sealsecurity.io/"
+
+      - name: Pack
+        run: npm pack
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: npm-tarball
+          path: svgo-1.3.2.tgz
+          if-no-files-found: error
