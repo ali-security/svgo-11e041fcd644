@@ -1,6 +1,20 @@
 'use strict';
 
-exports.type = 'perItem';
+/**
+ * The traversal is bottom-up so that a subtree is always processed before the
+ * element containing it is collapsed.
+ *
+ * Collapsing an executable <a> replaces it with its children and therefore
+ * drops every xmlns: prefix that <a> declared. A top-down pass would unbind
+ * such a prefix before the <prefix:script> it binds has been visited, and that
+ * script would then resolve to no namespace at all and survive. Walking the
+ * subtree first keeps every binding in place for as long as it is needed.
+ *
+ * The grouping in .svgo.yml is unaffected: this plugin sits between
+ * removeStyleElement and a `full` plugin, both passes run in the same order as
+ * before, and the plugin is disabled by default anyway.
+ */
+exports.type = 'perItemReverse';
 
 exports.active = false;
 
@@ -26,11 +40,30 @@ var SCRIPT_NAMESPACES = [
 var FOREIGN_OBJECT_NAMESPACES = [SVG_NAMESPACE];
 
 /**
+ * Namespaces that support SVG <a> elements.
+ *
+ * @type {Array}
+ */
+var ANCHOR_NAMESPACES = [SVG_NAMESPACE];
+
+/**
  * Attributes that can load or navigate to executable documents in HTML.
  *
  * @type {Array}
  */
 var HTML_URL_ATTRS = ['action', 'data', 'formaction', 'href', 'src'];
+
+/**
+ * Characters clients drop from a URL before they parse it.
+ *
+ * Browsers remove ASCII tab, line feed and carriage return from anywhere in a
+ * URL, so "java&#9;script:alert(1)" navigates exactly like "javascript:".
+ * Removing them here too means they cannot be used to smuggle an executable
+ * scheme past the comparison below.
+ *
+ * @type {RegExp}
+ */
+var URL_IGNORED_CHARS = /[\t\n\r]/g;
 
 /**
  * Schemes whose URL runs code directly.
@@ -68,9 +101,10 @@ var EXECUTABLE_DATA_MEDIA_TYPES = [
  * <foo:script xmlns:foo="http://www.w3.org/2000/svg">.
  *
  * The parent chain is intact while this runs: lib/svgo/plugins.js monkeys()
- * filters a parent out of its own parent's content before descending into that
- * parent's children, so every visited item still points at the ancestors it
- * was parsed with.
+ * never rewrites parentNode on the way down, and on the reverse pass it walks
+ * a subtree to the bottom before the element containing it is visited, so an
+ * item is always resolved against the ancestors it was parsed with — including
+ * an <a> that is collapsed only after its whole subtree has been processed.
  *
  * @param {Object} item element to resolve the prefix for
  * @param {String} prefix namespace prefix
@@ -95,15 +129,19 @@ function resolveNamespace(item, prefix) {
  *
  * javascript: and the legacy vbscript: scheme run code directly, and a data:
  * URL whose media type is an executable document type runs whatever markup it
- * carries. Leading whitespace is ignored and the value is compared case
- * insensitively, because clients strip and fold it the same way.
+ * carries. The value is normalized the way clients normalize it before they
+ * parse it: tabs and newlines are dropped from anywhere in the value, leading
+ * whitespace is ignored, and the comparison is case insensitive.
  *
  * @param {String} value attribute value
  * @return {Boolean}
  */
 function isExecutableUrl(value) {
 
-    var normalizedValue = String(value).replace(/^\s+/, '').toLowerCase();
+    var normalizedValue = String(value)
+            .replace(URL_IGNORED_CHARS, '')
+            .replace(/^\s+/, '')
+            .toLowerCase();
 
     if (EXECUTABLE_URL_SCHEMES.test(normalizedValue)) {
         return true;
@@ -211,7 +249,98 @@ function sanitizeForeignObject(item) {
 }
 
 /**
- * Remove <script> and sanitize executable HTML inside <foreignObject>.
+ * Determine if an element is an SVG <a>.
+ *
+ * The match is namespace-aware the same way the <script> and the
+ * <foreignObject> matches are: a bare <a>, and any <prefix:a> whose prefix is
+ * bound to the SVG namespace, are links clients navigate. An element with the
+ * same local name in an unrelated namespace is a foreign element that carries
+ * no link semantics, so it is left alone.
+ *
+ * @param {Object} elem element to test
+ * @return {Boolean}
+ */
+function isAnchor(elem) {
+
+    // isElem() compares the qualified name, so it only matches a bare one.
+    if (elem.isElem('a')) {
+        return true;
+    }
+
+    return Boolean(elem.prefix) && elem.local === 'a' &&
+        ANCHOR_NAMESPACES.indexOf(resolveNamespace(elem, elem.prefix)) !== -1;
+
+}
+
+/**
+ * Determine if an element links to an executable URL.
+ *
+ * A link target is written either as a plain href or as a prefixed one, most
+ * commonly xlink:href, and clients honour both. Whichever prefix it carries,
+ * the value decides: only a URL that executes makes the link dangerous.
+ *
+ * isExecutableUrl() coerces its argument, so an attribute without a value
+ * cannot match.
+ *
+ * @param {Object} elem element to test
+ * @return {Boolean}
+ */
+function hasExecutableLink(elem) {
+
+    if (!elem.attrs) {
+        return false;
+    }
+
+    return Object.keys(elem.attrs).some(function(name) {
+
+        return (name === 'href' || name.slice(-5) === ':href') &&
+            isExecutableUrl(elem.attrs[name].value);
+
+    });
+
+}
+
+/**
+ * Replace every executable link among an element's children with its content.
+ *
+ * Only an <a> whose own link executes is collapsed. An inert link such as
+ * href="/safe" keeps navigating, so the element and its content are left
+ * exactly as they were, and so is an <a> in an unrelated namespace.
+ *
+ * The collapse is driven from the parent, the way collapseGroups does it,
+ * rather than from the anchor's own visit. lib/svgo/plugins.js monkeys()
+ * rebuilds a node's content with Array.prototype.filter(), which fixes the
+ * length up front but reads live indices, so splicing the array a plugin is
+ * currently being filtered over silently drops siblings. The parent's content
+ * has already been rebuilt by the time the parent itself is visited, so
+ * mutating it here is safe. Iterating backwards keeps the indices of the
+ * entries still to be visited valid across each in-place splice.
+ *
+ * @param {Object} item current iteration item
+ */
+function collapseExecutableAnchors(item) {
+
+    if (item.isEmpty()) {
+        return;
+    }
+
+    for (var i = item.content.length - 1; i >= 0; i--) {
+
+        var child = item.content[i];
+
+        if (isAnchor(child) && hasExecutableLink(child)) {
+            // spliceContent() reparents the insertion, and an empty <a> simply
+            // leaves nothing behind.
+            item.spliceContent(i, 1, child.content || []);
+        }
+
+    }
+
+}
+
+/**
+ * Remove <script>, sanitize executable HTML inside <foreignObject> and
+ * collapse executable links.
  *
  * The <script> match is namespace-aware: a bare <script>, and any
  * <prefix:script> whose prefix is bound to the SVG or the XHTML namespace, are
@@ -222,6 +351,10 @@ function sanitizeForeignObject(item) {
  * whose content is HTML and therefore executes through event attributes, srcdoc
  * and executable URLs as well. The elements and their visual content are
  * preserved.
+ *
+ * Finally an <a> whose link executes is replaced by its own content: the link
+ * target is what runs, so dropping the element removes the whole vector while
+ * keeping everything the link was wrapped around visible.
  *
  * https://www.w3.org/TR/SVG/script.html
  *
@@ -248,6 +381,7 @@ exports.fn = function(item) {
     }
 
     sanitizeForeignObject(item);
+    collapseExecutableAnchors(item);
 
     return true;
 

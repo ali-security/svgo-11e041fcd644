@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+  <a xmlns:hidden="http://www.w3.org/2000/svg" href="javascript:alert(1)">
+    <hidden:script>alert(2)</hidden:script>
+    <text y="10">Visible</text>
+  </a>
+  <g>
+    <a xmlns:sneaky="http://www.w3.org/1999/xhtml" href="java&#9;script:alert(3)">
+      <sneaky:script>alert(4)</sneaky:script>
+      <text y="20">Also visible</text>
+    </a>
+  </g>
+</svg>
+
+@@@
+
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+    <text y="10">
+        Visible
+    </text>
+    <g>
+        <text y="20">
+            Also visible
+        </text>
+    </g>
+</svg>

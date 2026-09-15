@@ -1,0 +1,40 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+  <a href="javascript:alert(1)">
+    <a href="javascript:alert(2)">
+      <text y="10">Nested</text>
+    </a>
+  </a>
+  <a href="javascript:alert(3)"/>
+  <g>
+    <a href="javascript:alert(4)">
+      <text y="20">First</text>
+      <text y="30">Second</text>
+    </a>
+    <circle cx="10" cy="10" r="5"/>
+    <a href="javascript:alert(5)">
+      <text y="40">Third</text>
+    </a>
+    <rect width="10" height="10"/>
+  </g>
+</svg>
+
+@@@
+
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+    <text y="10">
+        Nested
+    </text>
+    <g>
+        <text y="20">
+            First
+        </text>
+        <text y="30">
+            Second
+        </text>
+        <circle cx="10" cy="10" r="5"/>
+        <text y="40">
+            Third
+        </text>
+        <rect width="10" height="10"/>
+    </g>
+</svg>
