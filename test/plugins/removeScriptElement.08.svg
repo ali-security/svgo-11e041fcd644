@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:x="http://teaparty.diy" viewBox="0 0 100 100" version="1.1">
+  <x:script>
+    Kept, the prefix x is bound to a custom namespace at the root.
+  </x:script>
+  <g xmlns:x="http://www.w3.org/1999/xhtml">
+    <x:script>
+      alert(1);
+    </x:script>
+  </g>
+  <foo:script xmlns:foo="http://www.w3.org/2000/svg">
+    alert(2);
+  </foo:script>
+</svg>
+
+@@@
+
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:x="http://teaparty.diy" viewBox="0 0 100 100" version="1.1">
+    <x:script>
+        Kept, the prefix x is bound to a custom namespace at the root.
+    </x:script>
+    <g xmlns:x="http://www.w3.org/1999/xhtml"/>
+</svg>
